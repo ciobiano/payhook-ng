@@ -1,10 +1,31 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Package artifacts
 *.tgz
 
+# Environment
 .env
+.env.*
 
-docs
-/docs
+# Documentation (generated)
+docs/
+test-app/
 
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Test coverage
+coverage/
+
+# Project notes
+FILES
 .CODEBASE_GUIDE.md
+.prd.md
