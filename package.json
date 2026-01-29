@@ -1,0 +1,62 @@
+{
+  "name": "payhook-ng",
+  "version": "0.1.0",
+  "description": "TypeScript-first webhook verification building blocks for Paystack and Flutterwave.",
+  "license": "ISC",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./paystack": {
+      "types": "./dist/paystack/index.d.ts",
+      "default": "./dist/paystack/index.js"
+    },
+    "./flutterwave": {
+      "types": "./dist/flutterwave/index.d.ts",
+      "default": "./dist/flutterwave/index.js"
+    },
+    "./nextjs": {
+      "types": "./dist/integrations/nextjs.d.ts",
+      "default": "./dist/integrations/nextjs.js"
+    },
+    "./express": {
+      "types": "./dist/integrations/express.d.ts",
+      "default": "./dist/integrations/express.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "paystack",
+    "flutterwave",
+    "webhooks",
+    "webhook",
+    "signature",
+    "hmac",
+    "security",
+    "typescript",
+    "node",
+    "nextjs"
+  ],
+  "author": "PayHook Contributors",
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

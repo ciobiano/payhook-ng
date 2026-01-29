@@ -1,0 +1,10 @@
+node_modules
+dist
+*.tgz
+
+.env
+
+docs
+/docs
+
+.CODEBASE_GUIDE.md
