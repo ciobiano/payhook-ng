@@ -3,7 +3,8 @@ export type PayhookErrorCode =
   | 'PAYHOOK_INVALID_SIGNATURE'
   | 'PAYHOOK_INVALID_JSON'
   | 'PAYHOOK_REPLAY_ATTACK'
-  | 'PAYHOOK_STALE_EVENT';
+  | 'PAYHOOK_STALE_EVENT'
+  | 'PAYHOOK_UNKNOWN_PROVIDER';
 
 export class PayhookError extends Error {
   readonly code: PayhookErrorCode;

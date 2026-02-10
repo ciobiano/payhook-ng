@@ -31,7 +31,7 @@ export type FlutterwaveChargeData = {
   merchant_fee: number;
   processor_response: string;
   auth_model: string;
-  it: string;
+  ip: string;
   status: string;
   payment_type: string;
   created_at: string;

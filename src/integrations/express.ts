@@ -1,18 +1,21 @@
 import { verify } from '../index.js';
 import type { PayhookConfig } from '../index.js';
 import type { HttpHeaders } from '../types.js';
+import type { PaystackWebhook } from '../paystack/types.js';
+import type { FlutterwaveWebhook } from '../flutterwave/types.js';
 
 // Minimal Express types (no dependency on @types/express)
 interface ExpressRequest {
   body: Buffer | string;
   headers: Record<string, string | string[] | undefined>;
-  webhook?: any;
+  /** Attached by payhookMiddleware after successful verification. */
+  webhook?: PaystackWebhook | FlutterwaveWebhook;
 }
 interface ExpressResponse {
   status(code: number): ExpressResponse;
-  json(body: any): void;
+  json(body: unknown): void;
 }
-type NextFunction = (err?: any) => void;
+type NextFunction = (err?: unknown) => void;
 
 export function payhookMiddleware(config: PayhookConfig) {
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {

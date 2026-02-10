@@ -1,7 +1,10 @@
 import { verifyFlutterwaveWebhook, FLUTTERWAVE_SIGNATURE_HEADER } from './flutterwave/index.js';
+import type { FlutterwaveWebhook } from './flutterwave/types.js';
 import { verifyPaystackWebhook, PAYSTACK_SIGNATURE_HEADER } from './paystack/index.js';
-import type { HttpHeaders, WebhookVerificationResult } from './types.js';
+import type { PaystackWebhook } from './paystack/types.js';
+import type { HttpHeaders, WebhookVerificationFailure, WebhookVerificationResult } from './types.js';
 import type { IdempotencyStore } from './security/types.js';
+import { getHeader } from './utils.js';
 
 export * from './types.js';
 export * from './errors.js';
@@ -34,21 +37,37 @@ export type PayhookConfig = {
 };
 
 /**
- * Unified verification function that attempts to detect the provider from headers.
+ * The union of all possible return types from verify().
  *
- * NOTE: Idempotency is NOT automatically checked here because we need the payload first.
- * If you want idempotency, you should handle the result and check the ID, OR we need to parse here.
+ * Consumers can narrow by checking result.provider after result.ok === true:
+ *   if (result.ok && result.provider === 'paystack') → result.payload is PaystackWebhook
+ */
+export type UnifiedVerificationResult =
+  | WebhookVerificationResult<PaystackWebhook, 'paystack'>
+  | WebhookVerificationResult<FlutterwaveWebhook, 'flutterwave'>
+  | WebhookVerificationFailure;
+
+/**
+ * Unified verification function that detects the provider from headers.
  *
- * Actually, to make it seamless, we can parse, then check ID, then return.
+ * Order of operations (important for correctness):
+ * 1. Detect provider and verify signature
+ * 2. Parse payload
+ * 3. Validate timestamp (reject stale events) — BEFORE recording
+ * 4. Record in idempotency store — AFTER all validation passes
+ *
+ * Why this order? If we recorded before timestamp validation, a stale event
+ * would consume a slot in the idempotency store and could never be retried.
+ * Side effects (recording) must come after all validation gates.
  */
 export async function verify(
   rawBody: string | Buffer | Uint8Array,
   headers: HttpHeaders,
   config: PayhookConfig
-): Promise<WebhookVerificationResult<any>> {
-  let result: WebhookVerificationResult<any>;
+): Promise<UnifiedVerificationResult> {
+  // Step 1: Detect provider and verify signature
+  let result: WebhookVerificationResult<PaystackWebhook, 'paystack'> | WebhookVerificationResult<FlutterwaveWebhook, 'flutterwave'>;
 
-  // Check for Paystack
   const paystackHeader = getHeader(headers, PAYSTACK_SIGNATURE_HEADER);
   if (paystackHeader && config.paystackSecret) {
     result = verifyPaystackWebhook({
@@ -56,9 +75,7 @@ export async function verify(
       headers,
       secret: config.paystackSecret
     });
-  }
-  // Check for Flutterwave
-  else if (getHeader(headers, FLUTTERWAVE_SIGNATURE_HEADER) && config.flutterwaveSecretHash) {
+  } else if (getHeader(headers, FLUTTERWAVE_SIGNATURE_HEADER) && config.flutterwaveSecretHash) {
     result = verifyFlutterwaveWebhook({
       rawBody,
       headers,
@@ -72,28 +89,11 @@ export async function verify(
     };
   }
 
-  // If verification failed, return immediately
+  // Step 2: If signature verification failed, stop here
   if (!result.ok) return result;
 
-  // Idempotency Check
-  if (config.idempotencyStore) {
-    const eventId = extractEventId(result.provider, result.payload);
-    if (eventId) {
-        const isReplay = await config.idempotencyStore.exists(eventId);
-        if (isReplay) {
-            return {
-                ok: false,
-                provider: result.provider,
-                code: 'PAYHOOK_REPLAY_ATTACK',
-                message: `Duplicate event ID detected: ${eventId}`
-            };
-        }
-        await config.idempotencyStore.record(eventId, config.idempotencyTTL ?? 600);
-    }
-  }
-
-  // Timestamp validation
-  if (config.maxAgeSeconds && result.ok) {
+  // Step 3: Validate timestamp BEFORE recording (reject stale events)
+  if (config.maxAgeSeconds) {
     const createdAt = extractTimestamp(result.provider, result.payload);
     if (createdAt) {
       const ageSeconds = (Date.now() - createdAt.getTime()) / 1000;
@@ -103,6 +103,25 @@ export async function verify(
           provider: result.provider,
           code: 'PAYHOOK_STALE_EVENT',
           message: `Event is ${Math.round(ageSeconds)}s old, exceeds max age of ${config.maxAgeSeconds}s`
+        };
+      }
+    }
+  }
+
+  // Step 4: Idempotency check AFTER all validation passes
+  if (config.idempotencyStore) {
+    const eventId = extractEventId(result.provider, result.payload);
+    if (eventId) {
+      const isNew = await config.idempotencyStore.recordIfAbsent(
+        eventId,
+        config.idempotencyTTL ?? 600
+      );
+      if (!isNew) {
+        return {
+          ok: false,
+          provider: result.provider,
+          code: 'PAYHOOK_REPLAY_ATTACK',
+          message: `Duplicate event ID detected: ${eventId}`
         };
       }
     }
@@ -118,29 +137,17 @@ export function createPayhook(config: PayhookConfig) {
   };
 }
 
-function extractEventId(provider: string, payload: any): string | undefined {
-    if (!payload || typeof payload !== 'object') return undefined;
-    
-    // Paystack
-    if (provider === 'paystack') {
-        // usually data.id or data.reference
-        // For events, Paystack sends `event` and `data`. The event ID is technically just `data.id`?
-        // Actually, for webhook uniqueness, `event` + `data.id` is safer, or just `data.reference` for payments.
-        // Let's use `data.id` as the unique event identifier if available.
-        return payload.data?.id ? `paystack:${payload.data.id}` : undefined;
-    }
-    
-    // Flutterwave
-    if (provider === 'flutterwave') {
-        // Flutterwave sends `id` in data mostly?
-        // Flutterwave structure is { event, data: { id, ... } }
-         return payload.data?.id ? `flutterwave:${payload.data.id}` : undefined;
-    }
-
-    return undefined;
+/**
+ * Extracts a unique event identifier for idempotency.
+ * Prefixed with provider name to avoid cross-provider collisions.
+ */
+function extractEventId(provider: 'paystack' | 'flutterwave', payload: Record<string, any>): string | undefined {
+  const id = payload?.data?.id;
+  if (id === undefined || id === null) return undefined;
+  return `${provider}:${id}`;
 }
 
-function extractTimestamp(provider: string, payload: any): Date | undefined {
+function extractTimestamp(provider: 'paystack' | 'flutterwave', payload: Record<string, any>): Date | undefined {
   if (provider === 'paystack') {
     const ts = payload?.data?.created_at || payload?.data?.paid_at;
     return ts ? new Date(ts) : undefined;
@@ -148,17 +155,6 @@ function extractTimestamp(provider: string, payload: any): Date | undefined {
   if (provider === 'flutterwave') {
     const ts = payload?.data?.created_at;
     return ts ? new Date(ts) : undefined;
-  }
-  return undefined;
-}
-
-function getHeader(headers: HttpHeaders, name: string): string | undefined {
-  const target = name.toLowerCase();
-  for (const [k, v] of Object.entries(headers)) {
-    if (k.toLowerCase() !== target) continue;
-    if (typeof v === 'string') return v;
-    if (Array.isArray(v)) return v[0];
-    return undefined;
   }
   return undefined;
 }

@@ -1,11 +1,20 @@
 import type { IdempotencyStore } from './types.js';
 
 /**
- * A minimal interface that both `ioredis` and `redis` (node-redis) satisfy.
- * We don't import either library - the user provides their own client.
+ * Minimal Redis client interface satisfied by both `ioredis` and `redis` (node-redis v4+).
+ *
+ * We use SET with NX+EX for atomic "record if absent with TTL". Both client
+ * libraries support this calling convention through their .set() method.
  */
 export interface RedisLike {
-  get(key: string): Promise<string | null>;
+  /**
+   * SET key value [EX seconds] [NX]
+   *
+   * - ioredis:      set(key, value, 'EX', ttl, 'NX') → Promise<'OK' | null>
+   * - node-redis:   set(key, value, { EX: ttl, NX: true }) → Promise<string | null>
+   *
+   * Both return null when the key already exists (NX fails).
+   */
   set(key: string, value: string, ...args: any[]): Promise<any>;
 }
 
@@ -14,18 +23,33 @@ export class RedisIdempotencyStore implements IdempotencyStore {
 
   constructor(
     private client: RedisLike,
-    options: { prefix?: string } = {}
+    private options: { prefix?: string; clientType?: 'ioredis' | 'node-redis' } = {}
   ) {
     this.prefix = options.prefix ?? 'payhook:idempotency:';
   }
 
-  async exists(key: string): Promise<boolean> {
-    const result = await this.client.get(this.prefix + key);
-    return result !== null;
-  }
+  /**
+   * Atomically records a key in Redis using SET ... NX EX.
+   *
+   * NX = "only set if Not eXists" — this is atomic at the Redis server level.
+   * If two requests race, only one gets 'OK'; the other gets null.
+   * No TOCTOU race condition possible.
+   *
+   * Returns true if key was newly set, false if it already existed.
+   */
+  async recordIfAbsent(key: string, ttlSeconds: number): Promise<boolean> {
+    const fullKey = this.prefix + key;
 
-  async record(key: string, ttlSeconds: number): Promise<void> {
-    // SET key value EX ttlSeconds
-    await this.client.set(this.prefix + key, '1', 'EX', ttlSeconds);
+    let result: any;
+    if (this.options.clientType === 'node-redis') {
+      // node-redis v4+ uses an options object
+      result = await this.client.set(fullKey, '1', { EX: ttlSeconds, NX: true } as any);
+    } else {
+      // ioredis (default) uses positional arguments
+      result = await this.client.set(fullKey, '1', 'EX', ttlSeconds, 'NX');
+    }
+
+    // Both clients return null when NX condition fails (key already exists)
+    return result !== null;
   }
 }

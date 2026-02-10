@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 import { InvalidJsonError, InvalidSignatureError, MissingHeaderError } from '../errors.js';
 import type { HttpHeaders, WebhookVerificationResult } from '../types.js';
+import { getHeader, timingSafeEqualHex, toBuffer } from '../utils.js';
 import type { PaystackWebhook } from './types.js';
 
 export const PAYSTACK_SIGNATURE_HEADER = 'x-paystack-signature' as const;
@@ -26,34 +27,6 @@ export type VerifyPaystackWebhookOptions = {
   /** The header name to read the signature from (defaults to x-paystack-signature). */
   signatureHeader?: string;
 };
-
-function toBuffer(rawBody: VerifyPaystackWebhookInput['rawBody']): Buffer {
-  if (typeof rawBody === 'string') return Buffer.from(rawBody, 'utf8');
-  if (Buffer.isBuffer(rawBody)) return rawBody;
-  return Buffer.from(rawBody);
-}
-
-function getHeader(headers: HttpHeaders, name: string): string | undefined {
-  const target = name.toLowerCase();
-  for (const [k, v] of Object.entries(headers)) {
-    if (k.toLowerCase() !== target) continue;
-    if (typeof v === 'string') return v;
-    if (Array.isArray(v)) return v[0];
-    return undefined;
-  }
-  return undefined;
-}
-
-function timingSafeEqualHex(aHex: string, bHex: string): boolean {
-  try {
-    const a = Buffer.from(aHex, 'hex');
-    const b = Buffer.from(bHex, 'hex');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
 
 export function computePaystackSignature(rawBody: VerifyPaystackWebhookInput['rawBody'], secret: string): string {
   const buf = toBuffer(rawBody);
@@ -117,28 +90,26 @@ export function verifyPaystackWebhook<TPayload = PaystackWebhook>(
 
 /**
  * Same as `verifyPaystackWebhook`, but throws typed errors.
+ *
+ * Delegates to verifyPaystackWebhook internally — one source of truth for
+ * the verification logic.
  */
 export function verifyPaystackWebhookOrThrow<TPayload = PaystackWebhook>(
   input: VerifyPaystackWebhookInput,
   options: VerifyPaystackWebhookOptions = {}
 ): TPayload {
-  const signatureHeader = options.signatureHeader ?? PAYSTACK_SIGNATURE_HEADER;
+  const result = verifyPaystackWebhook<TPayload>(input, options);
 
-  const signature =
-    input.signature ?? (input.headers ? getHeader(input.headers, signatureHeader) : undefined);
-
-  if (!signature) throw new MissingHeaderError(signatureHeader);
-
-  const expected = computePaystackSignature(input.rawBody, input.secret);
-  const ok = timingSafeEqualHex(expected, signature);
-  if (!ok) throw new InvalidSignatureError('Invalid Paystack webhook signature');
-
-  const rawString = Buffer.isBuffer(input.rawBody) ? input.rawBody.toString('utf8') : toBuffer(input.rawBody).toString('utf8');
-  if (options.parseJson === false) return rawString as unknown as TPayload;
-
-  try {
-    return JSON.parse(rawString) as TPayload;
-  } catch (cause) {
-    throw new InvalidJsonError('Invalid JSON payload', cause);
+  if (!result.ok) {
+    switch (result.code) {
+      case 'PAYHOOK_MISSING_HEADER':
+        throw new MissingHeaderError(options.signatureHeader ?? PAYSTACK_SIGNATURE_HEADER);
+      case 'PAYHOOK_INVALID_JSON':
+        throw new InvalidJsonError(result.message);
+      default:
+        throw new InvalidSignatureError(result.message);
+    }
   }
+
+  return result.payload;
 }
