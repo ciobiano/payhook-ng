@@ -8,23 +8,14 @@ import type { PaystackWebhook } from './types.js';
 export const PAYSTACK_SIGNATURE_HEADER = 'x-paystack-signature' as const;
 
 export type VerifyPaystackWebhookInput = {
-  /** Raw request body (exact bytes as received). */
   rawBody: string | Buffer | Uint8Array;
-  /** Paystack secret key used to compute the signature. */
   secret: string;
-  /** If you already extracted the signature header value yourself. */
   signature?: string;
-  /** Optional headers map. Used if `signature` isn't provided. */
   headers?: HttpHeaders;
 };
 
 export type VerifyPaystackWebhookOptions = {
-  /**
-   * When true (default), JSON.parse is performed and returned in `payload`.
-   * When false, `payload` will be the raw string.
-   */
   parseJson?: boolean;
-  /** The header name to read the signature from (defaults to x-paystack-signature). */
   signatureHeader?: string;
 };
 

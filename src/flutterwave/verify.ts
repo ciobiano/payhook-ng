@@ -6,32 +6,20 @@ import type { FlutterwaveWebhook } from './types.js';
 export const FLUTTERWAVE_SIGNATURE_HEADER = 'verif-hash' as const;
 
 export type VerifyFlutterwaveWebhookInput = {
-  /** Raw request body. */
   rawBody: string | Buffer | Uint8Array;
-  /** Secret hash configured in the Flutterwave dashboard. */
   secretHash: string;
-  /** If you already extracted the signature header value yourself. */
   signature?: string;
-  /** Optional headers map. Used if `signature` isn't provided. */
   headers?: HttpHeaders;
 };
 
 export type VerifyFlutterwaveWebhookOptions = {
-  /**
-   * When true (default), JSON.parse is performed and returned in `payload`.
-   * When false, `payload` will be the raw string.
-   */
+
   parseJson?: boolean;
-  /** The header name to read the signature from (defaults to verif-hash). */
   signatureHeader?: string;
 };
 
-/**
- * Verifies a Flutterwave webhook signature and (optionally) parses JSON.
- *
- * Flutterwave uses a 'secret hash' mechanism where the `verif-hash` header
- * must match the secret hash you configured in your dashboard exactly.
- */
+
+
 export function verifyFlutterwaveWebhook<TPayload = FlutterwaveWebhook>(
   input: VerifyFlutterwaveWebhookInput,
   options: VerifyFlutterwaveWebhookOptions = {}
@@ -50,8 +38,6 @@ export function verifyFlutterwaveWebhook<TPayload = FlutterwaveWebhook>(
     };
   }
 
-  // Flutterwave uses direct secret hash comparison (not HMAC).
-  // We MUST use timing-safe comparison to prevent timing oracle attacks.
   if (!timingSafeEqualStrings(signature, input.secretHash)) {
     return {
       ok: false,
@@ -80,13 +66,6 @@ export function verifyFlutterwaveWebhook<TPayload = FlutterwaveWebhook>(
   }
 }
 
-/**
- * Same as `verifyFlutterwaveWebhook`, but throws typed errors.
- *
- * Delegates to verifyFlutterwaveWebhook internally — one source of truth for
- * the verification logic. If you fix a bug in verify, it's automatically
- * fixed here too.
- */
 export function verifyFlutterwaveWebhookOrThrow<TPayload = FlutterwaveWebhook>(
   input: VerifyFlutterwaveWebhookInput,
   options: VerifyFlutterwaveWebhookOptions = {}

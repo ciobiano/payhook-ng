@@ -6,7 +6,6 @@ export type FlutterwaveWebhook =
 /**
  * Common Flutterwave event names.
  *
- * This is not exhaustive; keep it extensible.
  */
 export type FlutterwaveEventType =
   | 'charge.completed'
@@ -16,7 +15,7 @@ export type FlutterwaveEventType =
 export type FlutterwaveChargeCompletedWebhook = {
   event: 'charge.completed';
   data: FlutterwaveChargeData;
-  'event.type'?: string; // Flutterwave sometimes sends this
+  'event.type'?: string; 
 };
 
 export type FlutterwaveChargeData = {

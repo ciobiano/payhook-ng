@@ -16,55 +16,31 @@ export * as paystack from './paystack/index.js';
 export * as flutterwave from './flutterwave/index.js';
 
 export type PayhookConfig = {
-  /** Paystack secret key (starts with sk_). */
   paystackSecret?: string;
-  /** Flutterwave secret hash (configured in dashboard). */
   flutterwaveSecretHash?: string;
-  /**
-   * Optional idempotency store to prevent replay attacks.
-   * If provided, the verification logic will check if the event ID has been seen.
-   */
+
   idempotencyStore?: IdempotencyStore;
-  /**
-   * TTL in seconds for idempotency check (default: 600s / 10m).
-   */
+ 
   idempotencyTTL?: number;
-  /**
-   * Maximum age in seconds for a webhook event.
-   * Events older than this are rejected as stale.
-   */
+
   maxAgeSeconds?: number;
 };
 
-/**
- * The union of all possible return types from verify().
- *
- * Consumers can narrow by checking result.provider after result.ok === true:
- *   if (result.ok && result.provider === 'paystack') → result.payload is PaystackWebhook
- */
+
 export type UnifiedVerificationResult =
   | WebhookVerificationResult<PaystackWebhook, 'paystack'>
   | WebhookVerificationResult<FlutterwaveWebhook, 'flutterwave'>
   | WebhookVerificationFailure;
 
-/**
- * Unified verification function that detects the provider from headers.
- *
- * Order of operations (important for correctness):
- * 1. Detect provider and verify signature
- * 2. Parse payload
- * 3. Validate timestamp (reject stale events) — BEFORE recording
- * 4. Record in idempotency store — AFTER all validation passes
- *
- * Why this order? If we recorded before timestamp validation, a stale event
- * would consume a slot in the idempotency store and could never be retried.
- * Side effects (recording) must come after all validation gates.
- */
+
 export async function verify(
   rawBody: string | Buffer | Uint8Array,
   headers: HttpHeaders,
   config: PayhookConfig
 ): Promise<UnifiedVerificationResult> {
+
+
+  
   // Step 1: Detect provider and verify signature
   let result: WebhookVerificationResult<PaystackWebhook, 'paystack'> | WebhookVerificationResult<FlutterwaveWebhook, 'flutterwave'>;
 

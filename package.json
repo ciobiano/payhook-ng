@@ -2,7 +2,7 @@
   "name": "payhook-ng",
   "version": "0.1.0",
   "description": "TypeScript-first webhook verification building blocks for Paystack and Flutterwave.",
-  "license": "ISC",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -31,7 +31,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "clean": "rm -rf dist",
@@ -54,6 +55,17 @@
     "nextjs"
   ],
   "author": "PayHook Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ciobiano/payhook-ng.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ciobiano/payhook-ng/issues"
+  },
+  "homepage": "https://github.com/ciobiano/payhook-ng#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "typescript": "^5.9.3",

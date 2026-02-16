@@ -231,4 +231,4 @@ import { InvalidSignatureError, MissingHeaderError } from 'payhook-ng';
 
 ## License
 
-ISC
+[MIT](LICENSE)
